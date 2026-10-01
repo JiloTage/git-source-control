@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "git-source-control": {
+      "command": "node",
+      "args": [
+        "./server.mjs"
+      ],
+      "cwd": "./"
+    }
+  }
+}

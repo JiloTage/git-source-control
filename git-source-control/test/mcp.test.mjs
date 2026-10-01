@@ -1,0 +1,56 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { git } from '../git.mjs';
+
+test('real stdio MCP: sidebar metadata, bundled UI, staging, errors, and commit', async () => {
+  const scratch = fileURLToPath(new URL('../../.test-work/git-tests/', import.meta.url));
+  mkdirSync(scratch, { recursive: true });
+  const root = mkdtempSync(path.join(scratch, 'mcp-'));
+  git(root, 'init', '-b', 'main');
+  git(root, 'config', 'user.name', 'MCP Test'); git(root, 'config', 'user.email', 'test@example.invalid');
+  writeFileSync(path.join(root, 'new.txt'), 'test\n');
+  const config = path.join(root, 'repos.json');
+  writeFileSync(config, JSON.stringify([{ id: 'test', label: 'Test', path: root }]));
+  git(root, 'config', 'core.excludesfile', config + '.ignore');
+  writeFileSync(config + '.ignore', 'repos.json*\n');
+  const client = new Client({ name: 'test-host', version: '1.0.0' });
+  await client.connect(new StdioClientTransport({ command: process.execPath, args: [fileURLToPath(new URL('../server.mjs', import.meta.url)), '--config', config] }));
+  try {
+    const { tools } = await client.listTools();
+    assert.equal(tools.length, 15);
+    const open = tools.find(tool => tool.name === 'git.open');
+    assert.deepEqual(open._meta['openai/ui'].entrypoints, [{ type: 'global' }, { type: 'thread' }]);
+    assert.deepEqual(tools.find(tool => tool.name === 'git.discard')._meta.ui.visibility, ['app']);
+    assert.equal(tools.find(tool => tool.name === 'git.discard').annotations.destructiveHint, true);
+    for (const name of ['fetch', 'pull', 'push']) assert.equal(tools.find(tool => tool.name === `git.${name}`).annotations.openWorldHint, true);
+    const resource = await client.readResource({ uri: open._meta.ui.resourceUri });
+    assert.equal(resource.contents[0].mimeType, 'text/html;profile=mcp-app');
+    assert.match(resource.contents[0].text, /Source Control/);
+    assert.match(resource.contents[0].text, /<style>/);
+    assert.doesNotMatch(resource.contents[0].text, /<script[^>]+src=/);
+    let result = await client.callTool({ name: 'git.open', arguments: {} });
+    assert.equal(result.structuredContent.branch, 'main');
+    assert.deepEqual(result.structuredContent.history, []);
+    result = await client.callTool({ name: 'git.stage', arguments: { repo: 'test', revision: result.structuredContent.revision, file: 'new.txt' } });
+    assert.equal(result.structuredContent.staged.length, 1);
+    const invalid = await client.callTool({ name: 'git.discard', arguments: { repo: 'test', revision: result.structuredContent.revision, file: 'new.txt', confirmed: false } });
+    assert.equal(invalid.isError, true);
+    result = await client.callTool({ name: 'git.commit', arguments: { repo: 'test', revision: result.structuredContent.revision, message: 'MCP commit' } });
+    assert.equal(result.structuredContent.staged.length, 0);
+    assert.equal(git(root, 'log', '-1', '--format=%s').trim(), 'MCP commit');
+    assert.equal(result.structuredContent.history[0].subject, 'MCP commit');
+    const detail = await client.callTool({ name: 'git.inspect', arguments: { repo: 'test', hash: result.structuredContent.head } });
+    assert.match(detail.structuredContent.patch, /\+test/);
+    const unknown = await client.callTool({ name: 'git.status', arguments: { repo: '../outside' } });
+    assert.equal(unknown.isError, true);
+    const unavailable = await client.callTool({ name: 'git.open', arguments: { repo: 'missing' } });
+    assert.equal(unavailable.structuredContent.repositories.length, 1);
+    assert.equal(unavailable.structuredContent.revision, '');
+    assert.match(unavailable.structuredContent.error, /未登録/);
+  } finally { await client.close(); }
+});

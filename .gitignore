@@ -1,0 +1,4 @@
+node_modules/
+.test-work/
+git-source-control/repositories.json
+git-source-control/preview-*.png

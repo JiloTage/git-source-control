@@ -1,0 +1,10 @@
+{
+  "name": "git-source-control",
+  "interface": { "displayName": "Git Source Control" },
+  "plugins": [{
+    "name": "git-source-control",
+    "source": { "source": "local", "path": "./git-source-control" },
+    "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+    "category": "Developer Tools"
+  }]
+}

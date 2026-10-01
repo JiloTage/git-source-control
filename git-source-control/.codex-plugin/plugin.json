@@ -1,0 +1,19 @@
+{
+  "name": "git-source-control",
+  "version": "1.1.0",
+  "description": "Git Source Control with branches, fetch/pull/push, commit graph, diffs and staging.",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Git Source Control",
+    "shortDescription": "変更を確認して、ステージとコミット",
+    "longDescription": "ブランチ切り替え・作成、fetch / pull / push、コミットグラフ、差分表示、stage / unstage、commit、確認付き discard。",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Git Source Control を開いて"
+    ]
+  }
+}
